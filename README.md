@@ -3,7 +3,7 @@ import requests
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-# Your conversion functions and get_weather function remain unchanged
+
 api_key = "d6473b61f30e673d8da312056a6d00d6"
 def kelvin_to_celsius(kelvin):
     return kelvin - 273.15
@@ -80,7 +80,6 @@ def get_6_day_forecast(api_key, location):
         tfield.delete("1.0", "end")
         tfield.insert("insert", "Error: NO INTERNET, Kindly check your internet connection\n")
 
-# Modify the get_and_plot_forecast function
 
 def get_and_plot_forecast():
     location = user_location.get()
@@ -115,7 +114,6 @@ tfield = Text(root, width=46, height=10)
 tfield.pack()
 
 root.mainloop()
-
 
 
 
