@@ -52,7 +52,6 @@ def plot_temperature_graph(dates, avg_temps):
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.show()
-# ... (previous code)
 
 def get_6_day_forecast(api_key, location):
     try:
