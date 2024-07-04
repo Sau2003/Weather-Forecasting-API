@@ -1,7 +1,15 @@
 from tkinter import *
 import requests
 import matplotlib.pyplot as plt
-from datetime import datetime
+from datetime import datetime, timedelta
+from tkinter import messagebox
+import re
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import schedule
+import time
+from PIL import Image,ImageTk  # Importing PIL modules
 
 class WeatherApp:
     def __init__(self, root):
@@ -16,24 +24,79 @@ class WeatherApp:
         self.temperature_unit = StringVar()
         self.temperature_unit.set("Celsius")
 
-        Label(self.root, text="Enter City Name", font='Arial 12 bold', fg='blue').pack(pady=10)
-        self.entry = Entry(self.root, textvariable=self.user_location, width=24, font='Arial 14 bold')
+        # Load and set the background image
+        try:
+            bg_image = Image.open(r"C:\Users\LENOVO\OneDrive\Desktop\Weather Forecasting\weather.png")
+            resized_bg_image = bg_image.resize((root.winfo_screenwidth(), root.winfo_screenheight()), Image.BILINEAR)
+            self.bg_photo = ImageTk.PhotoImage(resized_bg_image)
+
+            bg_label = Label(self.root, image=self.bg_photo)
+            bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+
+        except IOError:
+            print("Error: Image file not found or cannot be opened.")
+
+
+        # Header Label
+        Label(self.root, text="Weather Forecast", font='Arial 20 bold', fg='blue').pack(pady=20)
+
+        # Entry for City Name
+        Label(self.root, text="Enter City Name:", font='Arial 12 bold', fg='blue').pack(pady=10)
+        self.entry = Entry(self.root, textvariable=self.user_location, width=30, font='Arial 14 bold')
         self.entry.pack()
 
-        Label(self.root, text="Select Temperature Unit", font='Arial 12 bold', fg='blue').pack(pady=10)
+        # Option Menu for Temperature Unit
+        Label(self.root, text="Select Temperature Unit:", font='Arial 12 bold', fg='blue').pack(pady=10)
         OptionMenu(self.root, self.temperature_unit, "Celsius", "Fahrenheit", "Kelvin").pack()
 
-        Button(self.root, text="Check Weather", font="Roman", bg='black', fg='white', activebackground="red",
-               command=self.get_weather).pack(pady=15)
+        # Button to Check Weather
+        Button(self.root, text="Check Weather", font="Arial 12 bold", bg='black', fg='white', activebackground="red",
+               command=self.get_weather).pack(pady=20)
 
-        Button(self.root, text="Next 6 Days", font="Arial 10", bg='lightblue', fg='black', activebackground="green",
-               command=self.get_and_plot_forecast).place(x=50, y=500)
+        # Frame for Weather Display
+        self.weather_frame = Frame(self.root)
+        self.weather_frame.pack(pady=20)
 
-        self.weather_now = Label(self.root, text="The Weather is:", font='arial 12 bold', fg='green')
+        # Label for Weather Now
+        self.weather_now = Label(self.weather_frame, text="The Weather is:", font='arial 14 bold', fg='green')
         self.weather_now.pack(pady=10)
 
-        self.tfield = Text(self.root, width=46, height=10, bg='lightyellow', fg='black')
+        # Text Field for Weather Details
+        self.tfield = Text(self.weather_frame, width=60, height=8, bg='lightyellow', fg='black', font='Arial 12')
         self.tfield.pack()
+
+        # Button to Get and Plot Forecast
+        Button(self.root, text="Next 10 Days Forecast", font="Arial 12", bg='lightblue', fg='black', activebackground="green",
+               command=self.get_and_plot_forecast).pack(pady=20)
+
+        # Subscription Label and Fields
+        self.subscribe_label = Label(self.root, text="Subscribe for Weather Alerts:", font='Arial 12 bold', fg='blue')
+        self.subscribe_label.pack(pady=10)
+
+        self.name_label = Label(self.root, text="Your Name:", font='Arial 12')
+        self.name_label.pack()
+
+        self.name_entry = Entry(self.root, width=30, font='Arial 12')
+        self.name_entry.pack()
+
+        self.city_label = Label(self.root, text="Your City Name:", font='Arial 12')
+        self.city_label.pack()
+
+        self.city_entry = Entry(self.root, width=30, font='Arial 12')
+        self.city_entry.pack()
+
+        self.email_label = Label(self.root, text="Enter your email address:", font='Arial 12')
+        self.email_label.pack()
+
+        self.email_entry = Entry(self.root, width=30, font='Arial 12')
+        self.email_entry.pack()
+
+        self.subscribe_button = Button(self.root, text="Subscribe", font="Arial 12", bg='green', fg='white', activebackground="blue",
+                                       command=self.subscribe_email)
+        self.subscribe_button.pack(pady=10)
+
+        # Schedule daily weather email update
+        schedule.every().day.at("09:00").do(self.send_daily_weather_email) 
 
     def kelvin_to_celsius(self, kelvin):
         return kelvin - 273.15
@@ -77,8 +140,8 @@ class WeatherApp:
 
                 temp = self.get_temperature(temp_k)
 
-                self.tfield.insert("insert", f"Weather in {city_name}:\n")
-                self.tfield.insert("insert", f"{weather_desc} and Temperature: {temp:.2f} {self.temperature_unit.get()}\n")
+                self.weather_now.config(text=f"Weather in {city_name}: {weather_desc}")
+                self.tfield.insert("insert", f"Temperature: {temp:.2f} {self.temperature_unit.get()}\n")
                 self.tfield.insert("insert", f"Humidity: {humidity}%\n")
                 self.tfield.insert("insert", f"Wind Speed: {wind_speed} m/s\n")
 
@@ -93,17 +156,20 @@ class WeatherApp:
             self.tfield.delete("1.0", "end")
             self.tfield.insert("insert", "Error: NO INTERNET, Kindly check your internet connection\n")
 
-    def plot_temperature_graph(self, dates, avg_temps):
+    def plot_temperature_graph(self, dates, avg_temps, conditions):
         plt.figure(figsize=(10, 6))
-        plt.plot(dates, avg_temps, marker='o')
-        plt.title(f"6-Day Temperature Forecast of {self.user_location.get()}")
+
+        colors = ['red' if condition == 'Bad' else 'green' for condition in conditions]
+
+        plt.scatter(dates, avg_temps, c=colors, marker='o')
+        plt.title(f"10-Day Temperature Forecast of {self.user_location.get()}")
         plt.xlabel("Date")
         plt.ylabel("Average Temperature ({})".format(self.temperature_unit.get()))
         plt.xticks(rotation=45)
         plt.tight_layout()
         plt.show()
 
-    def get_6_day_forecast(self):
+    def get_10_day_forecast(self):
         try:
             city_name = self.user_location.get().strip()
             if not self.is_valid_city_name(city_name):
@@ -121,13 +187,14 @@ class WeatherApp:
 
             if data.get("cod") == "200":
                 forecasts = data.get("list", [])
-                dates = [datetime.utcfromtimestamp(forecast["dt"]) for forecast in forecasts]
-                avg_temps = [self.kelvin_to_celsius(forecast["main"]["temp"]) for forecast in forecasts]
-                return dates, avg_temps
+                dates = [datetime.utcfromtimestamp(forecast["dt"]) for forecast in forecasts[:10]]  
+                avg_temps = [self.kelvin_to_celsius(forecast["main"]["temp"]) for forecast in forecasts[:10]]
+                conditions = ["Good" if forecast["weather"][0]["main"] in ["Clear", "Clouds"] else "Bad" for forecast in forecasts[:10]]
+                return dates, avg_temps, conditions
 
             else:
                 self.tfield.delete("1.0", "end")
-                self.tfield.insert("insert", f"Error: Unable to fetch 6-day forecast for {city_name}\n")
+                self.tfield.insert("insert", f"Error: Unable to fetch 10-day forecast for {city_name}\n")
 
         except ValueError:
             self.tfield.delete("1.0", "end")
@@ -143,18 +210,89 @@ class WeatherApp:
             if not self.is_valid_city_name(city_name):
                 raise ValueError("Invalid City Name")
 
-            weather_data = self.get_6_day_forecast()
+            weather_data = self.get_10_day_forecast()
 
             if weather_data is not None:
-                dates, avg_temps = weather_data
-                self.plot_temperature_graph(dates, avg_temps)
+                dates, avg_temps, conditions = weather_data
+                self.plot_temperature_graph(dates, avg_temps, conditions)
 
         except ValueError:
             self.tfield.delete("1.0", "end")
             self.tfield.insert("insert", "Error: Invalid City Name. Please enter a valid city name without numbers or special characters.\n")
 
+    def validate_email(self, email):
+        pattern = r'^[\w\.-]+@[a-zA-Z\d\.-]+\.[a-zA-Z]{2,}$'
+        return re.match(pattern, email)
+
+    def subscribe_email(self):
+        name = self.name_entry.get().strip()
+        email = self.email_entry.get().strip()
+        city_name = self.user_location.get().strip()
+
+        if name and email and city_name and self.is_valid_city_name(city_name) and self.validate_email(email):
+            messagebox.showinfo("Subscription", f"Hi {name}, subscribed successfully to Weather Alerts for {city_name}")
+            # Add email to schedule for daily weather updates
+            schedule.every().day.at("09:00").do(self.send_daily_weather_email, name=name, email=email, city=city_name)
+        elif not name or not email or not city_name:
+            messagebox.showerror("Subscription", "Please fill in all fields: Name, Email, and City Name")
+        elif not self.is_valid_city_name(city_name):
+            messagebox.showerror("Subscription", "Please enter a valid city name without numbers or special characters")
+        elif not self.validate_email(email):
+            messagebox.showerror("Subscription", "Please enter a valid email address")
+
+    def send_daily_weather_email(self, name, email, city):
+        try:
+            base_url = "http://api.openweathermap.org/data/2.5/weather"
+            params = {
+                "q": city,
+                "appid": self.api_key,
+            }
+
+            response = requests.get(base_url, params=params)
+            data = response.json()
+
+            if data.get("cod") == 200:
+                weather_desc = data["weather"][0]["description"] if "weather" in data else "Unknown"
+                temp_k = data["main"]["temp"] if "main" in data else "Unknown"
+                humidity = data["main"]["humidity"] if "main" in data else "Unknown"
+                wind_speed = data["wind"]["speed"] if "wind" in data else "Unknown"
+
+                temp = self.get_temperature(temp_k)
+
+                # Email content
+                msg = MIMEMultipart()
+                msg['From'] = 'saurabhkuche2@gmail.com.com' 
+                msg['To'] = email
+                msg['Subject'] = f"Weather Update for {city}"
+
+                body = f"Hi {name},\n\n"
+                body += f"Weather in {city}:\n"
+                body += f"{weather_desc} and Temperature: {temp:.2f} {self.temperature_unit.get()}\n"
+                body += f"Humidity: {humidity}%\n"
+                body += f"Wind Speed: {wind_speed} m/s\n"
+
+                msg.attach(MIMEText(body, 'plain'))
+
+                server = smtplib.SMTP('smtp.example.com', 587) 
+                server.starttls()
+                server.login('saurabhkuche2@gmail.com', 'your_password')  
+                text = msg.as_string()
+                server.sendmail('saurabhkuche2@gmail.com', email, text)  
+                server.quit()
+
+                print(f"Daily weather update sent to {email}")
+
+            else:
+                print(f"Error: Unable to fetch weather data for {city}")
+
+        except requests.exceptions.RequestException:
+            print("Error: NO INTERNET, Kindly check your internet connection")
+
 if __name__ == "__main__":
     root = Tk()
     app = WeatherApp(root)
     root.mainloop()
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 
